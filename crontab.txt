@@ -1,0 +1,1 @@
+*/1 * * * * /usr/bin/python /app/siteping.py >> /app/log/script.log
