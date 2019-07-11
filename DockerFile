@@ -1,0 +1,13 @@
+FROM python:3.6-alpine
+
+WORKDIR /usr/local/bin
+
+COPY requirements.txt /app/
+RUN pip install -r /app/requirements.txt
+
+COPY siteping.py /app/
+
+COPY crontab.txt /app/config/
+RUN /usr/bin/crontab /app/config/crontab.txt
+
+CMD ["/usr/sbin/crond", "-f"]
