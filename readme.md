@@ -1,7 +1,7 @@
-$ python -m venv ~/Repo/url_monitor
+$ python3 -m venv ~/environments/uptime_monitor
 
-$ source ~/Repo/url_monitor/bin/activate
+$ source ~/environments/uptime_monitor/bin/activate
 
-$ pip install -r requirements.txt
+$ pip3 install -r requirements.txt
 
-$ python monitor.py
+$ python3 monitor.py
