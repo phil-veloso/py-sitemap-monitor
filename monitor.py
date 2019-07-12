@@ -14,14 +14,12 @@ logging.basicConfig(
 		level=logging.INFO
 	)
 
-
-import credentials
+import config
 
 # -----------
 # Settings
 # -----------
 
-SITEMAP = 'https://www.veloso.com/xmlsitemap/'
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:65.0) Gecko/20100101 Firefox/65.0'}
 
 # Log errors
@@ -34,11 +32,11 @@ errors = []
 # Fetch sitemap
 def fetch_sitemap():
 	try:
-		r = requests.get( SITEMAP, headers=HEADERS ) 
+		r = requests.get( config.SITEMAP, headers=HEADERS ) 
 		return r.content
 	except Exception as e:
 		logging.error( 'Failed : fetch_sitemap - {0}'.format(e) )
-
+		email_send('Script Error', e)
 
 # Extract urls from sitemap html
 def extract_urls(html):
@@ -48,7 +46,7 @@ def extract_urls(html):
 		return re.findall(regex, page)
 	except Exception as e:
 		logging.error( 'Failed : extract_urls - {0}'.format(e) )   
-
+		email_send('Script Error', e)
 
 # Request url
 def fetch_url(q):
@@ -67,7 +65,7 @@ def fetch_url(q):
 			q.task_done()
 	except Exception as e:
 		logging.error( 'Failed : fetch_url - {0}'.format(e) )
-
+		email_send('Script Error', e)
 
 # Record url error w/o statuc code 200
 def report_url_error(url, r):
@@ -77,7 +75,7 @@ def report_url_error(url, r):
 		errors.append(error)
 	except Exception as e:
 		logging.warning( 'Failed : report_url_error - {0}'.format(e) )  
-
+		email_send('Script Error', e)
 
 # Record url redirect
 def report_url_redirect(url, r):
@@ -87,6 +85,7 @@ def report_url_redirect(url, r):
 		errors.append(error)
 	except Exception as e:
 		logging.warning( 'Failed : report_url_redirect - {0}'.format(e) )  
+		email_send('Script Error', e)
 
 
 # Send report at end of cycle
@@ -98,17 +97,18 @@ def report_email(errors):
 			# email_send('success', ['success']) 
 	except Exception as e:
 		logging.error( 'Failed : report_email - {0}'.format(e) )
+		email_send('Script Error', e)
 
 
 # Send email w/ Mailgun
 def email_send(subject, body):
 	try:
 		return requests.post(
-			credentials.MAILGUN_URL,
-			auth=('api', credentials.MAILGUN_KEY),
+			config.MAILGUN_URL,
+			auth=('api', config.MAILGUN_KEY),
 			data={
-				'from': 'Notification <phil@my.inquisitive.solutions>',
-				'to': ['phil@inquisitive.solutions'],
+				'from': 'Notification <' +  config.EMAIL_ADDRESS + '>',
+				'to': [config.EMAIL_ADDRESS],
 				'subject': subject,
 				'text' : body
 				}
