@@ -1,5 +1,5 @@
-# Credentials
-credentials.py
+# config
+config.py
 
 # Logging 
 *.log
