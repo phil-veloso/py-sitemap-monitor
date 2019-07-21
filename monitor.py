@@ -1,45 +1,57 @@
-import re  # Used to get urls from html
-import requests  # Used to retrieve sitemail + send mail
+import re  			# Used to get urls from html
+import requests 	# Used to retrieve sitemail + send mail
+import queue 		# Used to queue/limit no. of threads
+import threading 	# Used for multiprocessing of urls
+import time 		# Used for perforance reporting
+import logging 		# Used to record errors
 
-import queue  # Used to queue/limit no. of threads
-import threading  # Used for multiprocessing of urls
+import config 		# APPLICATION Configuration
 
-import time # used for perforance reporting
+from logging.handlers import RotatingFileHandler # Used for log rotation
 
-import logging
+TESTING = False
 
-logging.basicConfig(
-		format='%(asctime)s - %(levelname)s : %(message)s', 
-		filename='report.log',
-		level=logging.INFO
-	)
+# Global Scope
+page_errors = []
 
-import config
+#----------------------------------------------------------------------
+def init_logger():
+	"""
+	Initiaite Logging
+	"""
+	level = logging.INFO
+	logging.basicConfig(format='%(asctime)s - %(levelname)s : %(message)s', level=level)
 
-# -----------
-# Settings
-# -----------
+	Rthandler = RotatingFileHandler('report.log', maxBytes=100*1024*100, backupCount=5)
+	Rthandler.setLevel(level)
+	formatter = logging.Formatter('%(asctime)-12s [%(levelname)s] %(message)s')  
+	Rthandler.setFormatter(formatter)
+	logging.getLogger('').addHandler(Rthandler)
 
-HEADERS = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:65.0) Gecko/20100101 Firefox/65.0'}
+	logging.getLogger("re").setLevel(logging.WARNING)
+	logging.getLogger("requests").setLevel(logging.WARNING) 
+	logging.getLogger("queue").setLevel(logging.WARNING)
+	logging.getLogger("threading").setLevel(logging.WARNING) 
 
-# Log errors
-errors = []
 
-# -----------
-# Functions
-# -----------
-
-# Fetch sitemap
+#----------------------------------------------------------------------
 def fetch_sitemap():
+	"""
+	Fetch sitemap
+	"""
 	try:
-		r = requests.get( config.SITEMAP, headers=HEADERS ) 
+		r = requests.get( config.SITEMAP, headers=config.HEADERS ) 
 		return r.content
 	except Exception as e:
 		logging.error( 'Failed : fetch_sitemap - {0}'.format(e) )
 		email_send('Script Error', e)
 
-# Extract urls from sitemap html
+
+#----------------------------------------------------------------------
 def extract_urls(html):
+	"""
+	Extract urls from sitemap html
+	"""
 	regex = '(?<=\<loc\>)(.*?)(?=\<\/loc\>)'
 	try:
 		page = str(html)
@@ -48,16 +60,20 @@ def extract_urls(html):
 		logging.error( 'Failed : extract_urls - {0}'.format(e) )   
 		email_send('Script Error', e)
 
-# Request url
+
+#----------------------------------------------------------------------
 def fetch_url(q):
+	"""
+	Request url
+	"""
 	try: 
 		while True:
 			url = q.get()
-			r = requests.get(url, headers=HEADERS) 
+			r = requests.get(url, headers=config.HEADERS) 
 			if r.status_code != 200:
 				report_url_error(url, r)
-			# elif r.history:
-				# report_url_redirect(url, r)
+			elif r.history:
+				report_url_redirect(url, r)
 			logging.info('Link: %s' % url)
 			logging.info('Status: %d' % r.status_code)
 			logging.info('Reason: %s' % r.reason)
@@ -67,48 +83,62 @@ def fetch_url(q):
 		logging.error( 'Failed : fetch_url - {0}'.format(e) )
 		email_send('Script Error', e)
 
-# Record url error w/o statuc code 200
+
+#----------------------------------------------------------------------
 def report_url_error(url, r):
+	"""
+	Record url error w/o statuc code 200
+	"""
 	try: 
-		global errors
+		global page_errors
 		error = 'The url: {0} responded with an error ({1}): {2}'.format( url, r.status_code, r.reason )
-		errors.append(error)
+		page_errors.append(error)
 	except Exception as e:
 		logging.warning( 'Failed : report_url_error - {0}'.format(e) )  
 		email_send('Script Error', e)
 
-# Record url redirect
+
+#----------------------------------------------------------------------
 def report_url_redirect(url, r):
+	"""
+	Record url redirect
+	"""
 	try: 
-		global errors
+		global page_errors
 		error = 'The url: {0} was redirected to: {1}'.format(url,r.url)
-		errors.append(error)
+		page_errors.append(error)
 	except Exception as e:
 		logging.warning( 'Failed : report_url_redirect - {0}'.format(e) )  
 		email_send('Script Error', e)
 
 
-# Send report at end of cycle
-def report_email(errors):
+#----------------------------------------------------------------------
+def report_email(page_errors):
+	"""
+	Send report at end of cycle
+	"""
 	try: 
-		if len(errors) > 0:
-			email_send('errors', errors)
-		# else:
-			# email_send('success', ['success']) 
+		if len(page_errors) > 0:
+			email_send('errors', page_errors)
+		else:
+			email_send('success', ['success']) 
 	except Exception as e:
 		logging.error( 'Failed : report_email - {0}'.format(e) )
 		email_send('Script Error', e)
 
 
-# Send email w/ Mailgun
+#----------------------------------------------------------------------
 def email_send(subject, body):
+	"""
+	Send email w/ Mailgun
+	"""
 	try:
 		return requests.post(
 			config.MAILGUN_URL,
 			auth=('api', config.MAILGUN_KEY),
 			data={
-				'from': 'Notification <' +  config.EMAIL_ADDRESS + '>',
-				'to': [config.EMAIL_ADDRESS],
+				'from': 'Notification <' +  config.MAILGUN_EMAIL + '>',
+				'to': [config.NOTIFICATION_EMAIL],
 				'subject': subject,
 				'text' : body
 				}
@@ -116,41 +146,47 @@ def email_send(subject, body):
 	except Exception as e:
 		logging.error( 'Failed : email_send - {0}'.format(e) )
 
-# -----------
-# Execution
-# -----------
 
+#----------------------------------------------------------------------
+def main():
 
-logging.info('Start')
-start = time.time()
+	init_logger()
 
-html = fetch_sitemap()
-logging.info('1: Fetched sitemap')
+	logging.info('Start')
+	start = time.time()
 
-urls = extract_urls(html)
-logging.info('2: Extracted URLs')
+	html = fetch_sitemap()
+	logging.info('1: Fetched sitemap')
 
-strt_loop = time.time()
-logging.info('3: Start loop at {}s'.format(round(time.time() - start, 2)))
-q = queue.Queue(maxsize=0)
-num_threads = 10
+	urls = extract_urls(html)
+	logging.info('2: Extracted URLs')
 
-for i in range(num_threads):
-    worker = threading.Thread(target=fetch_url, args=(q,))
-    worker.setDaemon(True)
-    worker.start()
+	strt_loop = time.time()
+	logging.info('3: Start loop at {}s'.format(round(time.time() - start, 2)))
 
-for idx, url in enumerate(urls):
-    q.put(url)
-    # if idx > 100:
-    	# break
+	q = queue.Queue(maxsize=0)
+	num_threads = 10
 
-q.join()
+	for i in range(num_threads):
+		worker = threading.Thread(target=fetch_url, args=(q,))
+		worker.setDaemon(True)
+		worker.start()
 
-logging.info('4: Finished loop in {}s'.format(round(time.time() - strt_loop, 2)))
+	for idx, url in enumerate(urls):
+		q.put(url)
+		# Cap loop limit for testing
+		if TESTING:
+			if idx > 100:
+				break
+	q.join()
 
-report_email(errors)
-logging.info('5: Report sent')
+	logging.info('4: Finished loop in {}s'.format(round(time.time() - strt_loop, 2)))
 
-logging.info('Finish in: {}s'.format(round(time.time() - start, 2)))
+	report_email(page_errors)
+	logging.info('5: Report sent')
 
+	logging.info('Finish in: {}s'.format(round(time.time() - start, 2)))
+
+#----------------------------------------------------------------------
+if __name__ == "__main__":
+	main()
