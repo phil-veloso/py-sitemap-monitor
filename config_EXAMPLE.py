@@ -1,8 +1,13 @@
+"""
+CONFIGURATION 
+"""
 
+SITEMAP 			= ''
 
-SITEMAP = ''
+HEADERS 			= {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:65.0) Gecko/20100101 Firefox/65.0'}
 
-EMAIL_ADDRESS = ''
+MAILGUN_EMAIL 		= ''
+MAILGUN_URL 		= ''
+MAILGUN_KEY 		= ''
 
-MAILGUN_URL = ''
-MAILGUN_KEY = ''
+NOTIFICATION_EMAIL 	= ''
