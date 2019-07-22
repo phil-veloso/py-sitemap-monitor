@@ -11,3 +11,5 @@ MAILGUN_URL 		= ''
 MAILGUN_KEY 		= ''
 
 NOTIFICATION_EMAIL 	= ''
+
+LOG_PATH			= 'report.log'
