@@ -20,12 +20,17 @@ def init_logger():
 	Initiaite Logging
 	"""
 	level = logging.INFO
-	logging.basicConfig(format='%(asctime)s - %(levelname)s : %(message)s', level=level)
+	logging.basicConfig(
+		format='%(asctime)s - %(levelname)s : %(message)s', 
+		filename=config.LOG_PATH,
+		level=level)
 
-	Rthandler = RotatingFileHandler('report.log', maxBytes=100*1024*100, backupCount=5)
+	Rthandler = RotatingFileHandler(config.LOG_PATH, maxBytes=100*1024*100, backupCount=5)
 	Rthandler.setLevel(level)
+
 	formatter = logging.Formatter('%(asctime)-12s [%(levelname)s] %(message)s')  
 	Rthandler.setFormatter(formatter)
+
 	logging.getLogger('').addHandler(Rthandler)
 
 	logging.getLogger("re").setLevel(logging.WARNING)
@@ -164,6 +169,9 @@ def main():
 	strt_loop = time.time()
 	logging.info('3: Start loop at {}s'.format(round(time.time() - start, 2)))
 
+	"""
+	START MULTI-THREADING
+	"""
 	q = queue.Queue(maxsize=0)
 	num_threads = 10
 
