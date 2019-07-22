@@ -9,7 +9,7 @@ import config 		# APPLICATION Configuration
 
 from logging.handlers import RotatingFileHandler # Used for log rotation
 
-TESTING = False
+TEST_LOOP = False
 
 # Global Scope
 page_errors = []
@@ -174,10 +174,10 @@ def main():
 
 	for idx, url in enumerate(urls):
 		q.put(url)
-		# Cap loop limit for testing
-		if TESTING:
+		if TEST_LOOP:
 			if idx > 100:
 				break
+
 	q.join()
 
 	logging.info('4: Finished loop in {}s'.format(round(time.time() - strt_loop, 2)))
