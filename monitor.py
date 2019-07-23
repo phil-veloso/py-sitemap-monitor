@@ -5,16 +5,17 @@ import threading 	# Used for multiprocessing of urls
 import time 		# Used for perforance reporting
 import logging 		# Used to record errors
 
-import config 		# APPLICATION Configuration
-
 from logging.handlers import RotatingFileHandler # Used for log rotation
 
-TEST_LOOP = False
+#----------------------------------------------------------------------
 
-# Global Scope
-page_errors = []
+import config 		# CUSTOM - APPLICATION Configuration
+import sqlite 		# CUSTOM - APPLICATION Configuration
 
-logger = logging.getLogger(__name__)
+#----------------------------------------------------------------------
+
+page_errors 	= []
+logger 			= logging.getLogger('monitor')
 
 #----------------------------------------------------------------------
 def init_logger():
@@ -156,7 +157,10 @@ def email_send(subject, body):
 #----------------------------------------------------------------------
 def main():
 
+	timeStamp = time.time()
+
 	init_logger()
+	sqlite.init_database(timeStamp)
 
 	logger.info('Start')
 	start = time.time()
@@ -183,7 +187,7 @@ def main():
 
 	for idx, url in enumerate(urls):
 		q.put(url)
-		if TEST_LOOP:
+		if config.TEST_LOOP:
 			if idx > 100:
 				break
 
