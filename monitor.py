@@ -14,24 +14,25 @@ TEST_LOOP = False
 # Global Scope
 page_errors = []
 
+logger = logging.getLogger(__name__)
+
 #----------------------------------------------------------------------
 def init_logger():
 	"""
 	Initiaite Logging
 	"""
 	level = logging.INFO
-	logging.basicConfig(
-		format='%(asctime)s - %(levelname)s : %(message)s', 
-		filename=config.LOG_PATH,
-		level=level)
 
-	Rthandler = RotatingFileHandler(config.LOG_PATH, maxBytes=100*1024*100, backupCount=5)
-	Rthandler.setLevel(level)
+	handler = RotatingFileHandler(
+		config.LOG_PATH, 
+		maxBytes=100*1024*100, 
+		backupCount=5)
 
 	formatter = logging.Formatter('%(asctime)-12s [%(levelname)s] %(message)s')  
-	Rthandler.setFormatter(formatter)
+	handler.setFormatter(formatter)
 
-	logging.getLogger('').addHandler(Rthandler)
+	logger.setLevel(level)
+	logger.addHandler(handler)
 
 	logging.getLogger("re").setLevel(logging.WARNING)
 	logging.getLogger("requests").setLevel(logging.WARNING) 
@@ -48,7 +49,7 @@ def fetch_sitemap():
 		r = requests.get( config.SITEMAP, headers=config.HEADERS ) 
 		return r.content
 	except Exception as e:
-		logging.error( 'Failed : fetch_sitemap - {0}'.format(e) )
+		logger.error( 'Failed : fetch_sitemap - {0}'.format(e) )
 		email_send('Script Error', e)
 
 
@@ -62,7 +63,7 @@ def extract_urls(html):
 		page = str(html)
 		return re.findall(regex, page)
 	except Exception as e:
-		logging.error( 'Failed : extract_urls - {0}'.format(e) )   
+		logger.error( 'Failed : extract_urls - {0}'.format(e) )   
 		email_send('Script Error', e)
 
 
@@ -77,15 +78,15 @@ def fetch_url(q):
 			r = requests.get(url, headers=config.HEADERS) 
 			if r.status_code != 200:
 				report_url_error(url, r)
-			elif r.history:
-				report_url_redirect(url, r)
-			logging.info('Link: %s' % url)
-			logging.info('Status: %d' % r.status_code)
-			logging.info('Reason: %s' % r.reason)
-			logging.info('Speed: %f' % r.elapsed.total_seconds())
+			# elif r.history:
+				# report_url_redirect(url, r)
+			logger.info('Link: %s' % url)
+			logger.info('Status: %d' % r.status_code)
+			logger.info('Reason: %s' % r.reason)
+			logger.info('Speed: %f' % r.elapsed.total_seconds())
 			q.task_done()
 	except Exception as e:
-		logging.error( 'Failed : fetch_url - {0}'.format(e) )
+		logger.error( 'Failed : fetch_url - {0}'.format(e) )
 		email_send('Script Error', e)
 
 
@@ -99,7 +100,7 @@ def report_url_error(url, r):
 		error = 'The url: {0} responded with an error ({1}): {2}'.format( url, r.status_code, r.reason )
 		page_errors.append(error)
 	except Exception as e:
-		logging.warning( 'Failed : report_url_error - {0}'.format(e) )  
+		logger.warning( 'Failed : report_url_error - {0}'.format(e) )  
 		email_send('Script Error', e)
 
 
@@ -113,7 +114,7 @@ def report_url_redirect(url, r):
 		error = 'The url: {0} was redirected to: {1}'.format(url,r.url)
 		page_errors.append(error)
 	except Exception as e:
-		logging.warning( 'Failed : report_url_redirect - {0}'.format(e) )  
+		logger.warning( 'Failed : report_url_redirect - {0}'.format(e) )  
 		email_send('Script Error', e)
 
 
@@ -125,10 +126,10 @@ def report_email(page_errors):
 	try: 
 		if len(page_errors) > 0:
 			email_send('errors', page_errors)
-		else:
-			email_send('success', ['success']) 
+		# else:
+			# email_send('success', ['success']) 
 	except Exception as e:
-		logging.error( 'Failed : report_email - {0}'.format(e) )
+		logger.error( 'Failed : report_email - {0}'.format(e) )
 		email_send('Script Error', e)
 
 
@@ -149,7 +150,7 @@ def email_send(subject, body):
 				}
 			)
 	except Exception as e:
-		logging.error( 'Failed : email_send - {0}'.format(e) )
+		logger.error( 'Failed : email_send - {0}'.format(e) )
 
 
 #----------------------------------------------------------------------
@@ -157,17 +158,17 @@ def main():
 
 	init_logger()
 
-	logging.info('Start')
+	logger.info('Start')
 	start = time.time()
 
 	html = fetch_sitemap()
-	logging.info('1: Fetched sitemap')
+	logger.info('1: Fetched sitemap')
 
 	urls = extract_urls(html)
-	logging.info('2: Extracted URLs')
+	logger.info('2: Extracted URLs')
 
 	strt_loop = time.time()
-	logging.info('3: Start loop at {}s'.format(round(time.time() - start, 2)))
+	logger.info('3: Start loop at {}s'.format(round(time.time() - start, 2)))
 
 	"""
 	START MULTI-THREADING
@@ -188,12 +189,12 @@ def main():
 
 	q.join()
 
-	logging.info('4: Finished loop in {}s'.format(round(time.time() - strt_loop, 2)))
+	logger.info('4: Finished loop in {}s'.format(round(time.time() - strt_loop, 2)))
 
 	report_email(page_errors)
-	logging.info('5: Report sent')
+	logger.info('5: Report sent')
 
-	logging.info('Finish in: {}s'.format(round(time.time() - start, 2)))
+	logger.info('Finish in: {}s'.format(round(time.time() - start, 2)))
 
 #----------------------------------------------------------------------
 if __name__ == "__main__":
