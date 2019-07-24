@@ -18,11 +18,11 @@ page_errors 	= []
 logger 			= logging.getLogger('monitor')
 
 #----------------------------------------------------------------------
-def init_logger():
+def logger_init():
 	"""
 	Initiaite Logging
 	"""
-	level = logging.INFO
+	level = logging.WARNING
 
 	handler = RotatingFileHandler(
 		config.LOG_PATH, 
@@ -157,10 +157,8 @@ def email_send(subject, body):
 #----------------------------------------------------------------------
 def main():
 
-	timeStamp = time.time()
-
-	init_logger()
-	sqlite.init_database(timeStamp)
+	logger_init()
+	sqlite.database_init()
 
 	logger.info('Start')
 	start = time.time()
