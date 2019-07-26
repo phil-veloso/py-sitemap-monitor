@@ -10,7 +10,10 @@ import monitor
 
 #----------------------------------------------------------------------
 
-logger 			= logging.getLogger('monitor')
+logger 				= logging.getLogger('monitor')
+
+domain_table_name 	= config.DOMAIN + '_sitemap'
+url_table_name 		= config.DOMAIN + '_url'
 
 #----------------------------------------------------------------------
 def create_connection(db_file):
@@ -42,12 +45,7 @@ def create_table(conn, create_table_sql):
 def database_init():
 	""" 
 	Initialise database
-	"""	
-	database = config.DB_PATH
-
-	domain_table_name = config.DOMAIN + '_sitemap'
-	url_table_name = config.DOMAIN + '_url'
-	
+	"""		
 	sql_create_domain_table = 	'''CREATE TABLE IF NOT EXISTS {name} (
 									id integer PRIMARY KEY,
 									sitemap_url text NOT NULL,
@@ -57,10 +55,10 @@ def database_init():
 									redirects integer,
 									client_errors integer,
 									server_errors integer,
-									slowest real NOT NULL,
-									average real NOT NULL,
-									fastest real NOT NULL,
-									total_ime real NOT NULL
+									slowest real,
+									average real,
+									fastest real,
+									total_time real
 									);'''.format(name=domain_table_name )
  
 	sql_create_url_table = 	'''CREATE TABLE IF NOT EXISTS {name} (
@@ -73,12 +71,94 @@ def database_init():
 								FOREIGN KEY (sitemap_id) REFERENCES {domain} (id)
 								)'''.format(name=url_table_name, domain=domain_table_name )
  
-    # create a database connection
-	conn = create_connection(database)
+	conn = create_connection(config.DB_PATH)
 	if conn is not None:
 		# create domain table
 		create_table(conn, sql_create_domain_table)
 		# create url table
 		create_table(conn, sql_create_url_table)
+		conn.commit()
+		conn.close()
 	else:
-		logger.error( 'Failed : cannot create the database connection' )
+		logger.error( 'Failed : database_init - cannot create the database connection' )
+
+
+#----------------------------------------------------------------------
+def record_sitemap(values):
+	"""
+	create sitemap record
+	"""
+	conn = create_connection(config.DB_PATH)
+	if conn is not None:
+		try:	
+			sql = ''' INSERT INTO {name} (
+						sitemap_url,
+						date_time,
+						total_urls
+					)VALUES(?,?,?) '''.format(name=domain_table_name)
+			cur = conn.cursor()
+			cur.execute(sql, values)
+			row_id = cur.lastrowid
+			conn.commit()
+			conn.close()
+			return row_id
+		except Exception as e:
+			conn.close()
+			logger.error( 'Failed : record_sitemap - {0}'.format(e) )
+	else:
+		logger.error( 'Failed : record_sitemap - cannot create the database connection' )
+
+
+#----------------------------------------------------------------------
+def update_sitemap(table_id, values):
+	"""
+	Update table 
+	"""
+	conn = create_connection(config.DB_PATH)
+	if conn is not None:
+		try:
+			sql = ''' UPDATE {name} SET 
+						successes = ?,
+						redirects = ?,
+						client_errors = ?,
+						server_errors = ?,
+						slowest  = ?,
+						average  = ?,
+						fastest  = ?,
+						total_time  = ?
+						WHERE id = {id} '''.format(name=domain_table_name, id=table_id)
+			cur = conn.cursor()
+			cur.execute(sql, values)
+			conn.commit()
+			conn.close()
+		except Exception as e:
+			logger.error( 'Failed : update_sitemap - {0}'.format(e) )
+	else:
+		logger.error( 'Failed : update_sitemap - cannot create the database connection' )
+
+
+#----------------------------------------------------------------------
+def record_url(values):
+	"""
+	create a new url record
+	"""
+	conn = create_connection(config.DB_PATH)
+	if conn is not None:
+		try:
+			sql = ''' INSERT INTO {name} (
+							sitemap_id,
+							page_url,
+							status_code,
+							load_time,
+							comment
+							) VALUES(?,?,?,?,?) '''.format(name=url_table_name)
+
+			cur = conn.cursor()
+			cur.execute(sql, values)
+			conn.commit()
+			conn.close()
+		except Exception as e:
+			conn.close()
+			logger.error( 'Failed : record_url - {0}'.format(e) )
+	else:
+		logger.error( 'Failed : record_url - cannot create the database connection' )
