@@ -8,4 +8,4 @@ $ python3 monitor.py
 
 TODO:
 
-http://www.sqlitetutorial.net/sqlite-python/insert/
+- Improve email notifications on script error: email_send('Script Error', e)
