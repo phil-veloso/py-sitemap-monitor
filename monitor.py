@@ -11,7 +11,7 @@ from logging.handlers import RotatingFileHandler # Used for log rotation
 #----------------------------------------------------------------------
 
 import config 		# CUSTOM - APPLICATION Configuration
-import sqlite 		# CUSTOM - APPLICATION Configuration
+import dbm 		# CUSTOM - APPLICATION Configuration
 
 #----------------------------------------------------------------------
 
@@ -108,7 +108,7 @@ def fetch_url(q, sitemap_id):
 
 			load_times.append(r.elapsed.total_seconds())
 
-			sqlite.record_url( (sitemap_id, url, r.status_code, r.elapsed.total_seconds(), r.reason ) )
+			dbm.record_url( (sitemap_id, url, r.status_code, r.elapsed.total_seconds(), r.reason ) )
 			
 			logger.info('Link: %s' % url)
 			logger.info('Status: %d' % r.status_code)
@@ -190,11 +190,9 @@ def main():
 	#--------
 
 	logger_init()
-	sqlite.database_init()
+	dbm.database_init()
 
 	#--------
-
-	# logger.info('Start')
 
 	html = fetch_sitemap()
 	# logger.info('1: Fetched sitemap')
@@ -207,14 +205,12 @@ def main():
 	#--------
 
 	total_urls 		= len(urls)
-	sitemap_id 		= sqlite.record_sitemap((sitemap_url, date_time, total_urls))
+	sitemap_id 		= dbm.record_sitemap((sitemap_url, date_time, total_urls))
 
 	#--------
 
 	start_loop = time.time()
 	# logger.info('3: Start loop at {}s'.format(round(time.time() - start_loop, 2)))
-
-	#--------
 
 	q = queue.Queue(maxsize=0)
 	num_threads = 1
@@ -232,23 +228,21 @@ def main():
 
 	q.join()
 
-	# logger.info('4: Finished loop in {}s'.format(round(time.time() - start_loop, 2)))
-
+	
 	#--------	
 	slowest 		= max(load_times)
 	average 		= statistics.mean(load_times)
 	fastest 		= min(load_times)
-
 	total_time 		= round(time.time() - date_time, 2)
 
-	sitemap_id 		= sqlite.update_sitemap(sitemap_id, (successes, redirects, client_errors, server_errors, slowest, average, fastest, total_time ))
+	sitemap_id 		= dbm.update_sitemap(sitemap_id, (successes, redirects, client_errors, server_errors, slowest, average, fastest, total_time ))
 
 	#--------
 
-	# logger.info('5: Report sent')
+	# logger.info('5: Send report if errors')
 	report_email(page_errors)
 	
-	# logger.info('Finish in: {}s'.format(round(time.time() - date_time, 2)))
+	# logger.info('Total time taken: {}s'.format(round(time.time() - date_time, 2)))
 
 #----------------------------------------------------------------------
 if __name__ == "__main__":
