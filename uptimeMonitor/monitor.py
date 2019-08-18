@@ -1,17 +1,19 @@
 import re  			# Used to get urls from html
-import requests 	# Used to retrieve sitemail + send mail
+import requests 	# Used to retrieve sitemail
 import queue 		# Used to queue/limit no. of threads
 import threading 	# Used for multiprocessing of urls
 import time 		# Used for perforance reporting
 import logging 		# Used to record errors
-import statistics 	# Importing the statistics module 
+import statistics 	# importing the statistics module 
 
 from logging.handlers import RotatingFileHandler # Used for log rotation
 
 #----------------------------------------------------------------------
 
-import config 		# CUSTOM - APPLICATION Configuration
-import dbm 		# CUSTOM - APPLICATION Configuration
+import config 			# CUSTOM - APPLICATION Configuration
+import database 		# CUSTOM - APPLICATION Configuration
+import notifications	
+import helpers
 
 #----------------------------------------------------------------------
 
@@ -27,6 +29,7 @@ client_errors 	= 0
 server_errors 	= 0
 
 load_times 		= []
+data_array 		= []
 
 #----------------------------------------------------------------------
 def logger_init():
@@ -35,12 +38,14 @@ def logger_init():
 	"""
 	level = logging.WARNING
 
+	helpers.check_exists( config.LOG_PATH )
+
 	handler = RotatingFileHandler(
 		config.LOG_PATH, 
 		maxBytes=100*1024*100, 
 		backupCount=5)
 
-	formatter = logging.Formatter('%(asctime)-12s [%(levelname)s] %(message)s')  
+	formatter = logging.Formatter('%(asctime)-12s [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')  
 	handler.setFormatter(formatter)
 
 	logger.setLevel(level)
@@ -51,9 +56,8 @@ def logger_init():
 	logging.getLogger("queue").setLevel(logging.WARNING)
 	logging.getLogger("threading").setLevel(logging.WARNING) 
 
-
 #----------------------------------------------------------------------
-def fetch_sitemap():
+def sitemap_content(sitemap_url):
 	"""
 	Fetch sitemap
 	"""
@@ -78,7 +82,29 @@ def extract_urls(html):
 
 
 #----------------------------------------------------------------------
-def fetch_url(q, sitemap_id):
+def loop_urls( urls, sitemap_id ):
+	"""
+	Loop urls
+	"""
+	q = queue.Queue(maxsize=0)
+	num_threads = 10
+
+	for i in range(num_threads):
+		worker = threading.Thread(target=check_url, args=(q,sitemap_id))
+		worker.setDaemon(True)
+		worker.start()
+
+	for idx, url in enumerate(urls):
+		q.put(url)
+		if config.TEST_LOOP:
+			if idx > 10:
+				break
+
+	q.join()
+
+
+#----------------------------------------------------------------------
+def check_url(q, sitemap_id):
 	"""
 	Request url
 	"""
@@ -106,9 +132,17 @@ def fetch_url(q, sitemap_id):
 				global server_errors 
 				server_errors += 1
 
-			load_times.append(r.elapsed.total_seconds())
+			item = {
+				'seq_id'	: sitemap_id,
+				'url'		: url,
+				'status'	: r.status_code,
+				'time' 		: float( "{0:.2f}".format( r.elapsed.total_seconds() ) ),
+				'comment'	: r.reason
+			}
 
-			dbm.record_url( (sitemap_id, url, r.status_code, r.elapsed.total_seconds(), r.reason ) )
+			load_times.append(r.elapsed.total_seconds())
+			
+			data_array.append( item )
 			
 			logger.info('Link: %s' % url)
 			logger.info('Status: %d' % r.status_code)
@@ -118,7 +152,7 @@ def fetch_url(q, sitemap_id):
 			q.task_done()
 
 	except Exception as e:
-		logger.error( 'Failed : fetch_url - {0}'.format(e) )
+		logger.error( 'Failed : check_url - {0}'.format(e) )
 
 
 #----------------------------------------------------------------------
@@ -148,101 +182,94 @@ def report_url_redirect(url, r):
 
 
 #----------------------------------------------------------------------
-def report_email(page_errors):
+def record_data( data_array ):
 	"""
-	Send report at end of cycle
+	Record data array 
 	"""
-	try: 
-		if len(page_errors) > 0:
-			email_send('errors', page_errors)
-		# else:
-			# email_send('success', ['success']) 
-	except Exception as e:
-		logger.error( 'Failed : report_email - {0}'.format(e) )
+	for i in data_array:
+		database.record_url( ( 
+			i["seq_id"], 
+			i["url"], 
+			i["status"], 
+			i["time"], 
+			i["comment"]
+		) )
 
 
 #----------------------------------------------------------------------
-def email_send(subject, body):
-	"""
-	Send email w/ Mailgun
-	"""
-	try:
-		return requests.post(
-			config.MAILGUN_URL,
-			auth=('api', config.MAILGUN_KEY),
-			data={
-				'from': 'Notification <' +  config.MAILGUN_EMAIL + '>',
-				'to': [config.NOTIFICATION_EMAIL],
-				'subject': subject,
-				'text' : body
-				}
-			)
-	except Exception as e:
-		logger.error( 'Failed : email_send - {0}'.format(e) )
+def update_siteloop_entry(sitemap_id, date_time):
+	slowest 		= float( "{0:.2f}".format( max(load_times) ) )
+	average 		= float( "{0:.2f}".format( statistics.mean( load_times ) ) )
+	fastest 		= float( "{0:.2f}".format( min(load_times ) ) )
+	total_time 		= round( time.time() - date_time, 2)
+
+	sitemap_id 		= database.update_siteloop(sitemap_id, (successes, redirects, client_errors, server_errors, slowest, average, fastest, total_time ))
 
 
 #----------------------------------------------------------------------
 def main():
 
-	sitemap_url 	= config.SITEMAP
 	date_time  		= time.time()
-
-	#--------
-
-	logger_init()
-	dbm.database_init()
-
-	#--------
-
-	html = fetch_sitemap()
-	# logger.info('1: Fetched sitemap')
-
-	#--------
-
-	urls = extract_urls(html)
-	# logger.info('2: Extracted URLs')
-
-	#--------
-
-	total_urls 		= len(urls)
-	sitemap_id 		= dbm.record_sitemap((sitemap_url, date_time, total_urls))
-
-	#--------
-
-	start_loop = time.time()
-	# logger.info('3: Start loop at {}s'.format(round(time.time() - start_loop, 2)))
-
-	q = queue.Queue(maxsize=0)
-	num_threads = 1
-
-	for i in range(num_threads):
-		worker = threading.Thread(target=fetch_url, args=(q,sitemap_id))
-		worker.setDaemon(True)
-		worker.start()
-
-	for idx, url in enumerate(urls):
-		q.put(url)
-		if config.TEST_LOOP:
-			if idx > 10:
-				break
-
-	q.join()
-
 	
-	#--------	
-	slowest 		= max(load_times)
-	average 		= statistics.mean(load_times)
-	fastest 		= min(load_times)
-	total_time 		= round(time.time() - date_time, 2)
-
-	sitemap_id 		= dbm.update_sitemap(sitemap_id, (successes, redirects, client_errors, server_errors, slowest, average, fastest, total_time ))
+	#--------
+	# logger.info('Init')
+	logger_init()
 
 	#--------
+	# logger.info('Setup databases')	
+	database.setup_database()
 
-	# logger.info('5: Send report if errors')
-	report_email(page_errors)
+	#--------
+	# logger.info('Checking domains in database')	
+	has_domains = database.query_domains()
+
+	if has_domains is None:
+		# logger.info('No domains found - adding list')	
+		for i in config.DOMAINS:
+			database.record_domain((i,))			
+	
+	# logger.info('Domains found - fetching sitemaps')
+	sitemaps = database.fetch_sitemaps() # return array of sitemaps
+
+	#--------
+	# logger.info('Loop sitemaps')
+	for i in sitemaps:
+
+		domain_id 	= i[0]
+		sitemap_url	= i[1]	
+
+		#--------
+		# logger.info('1: Fetched sitemap')
+		html = sitemap_content(sitemap_url)
+
+		#--------
+		# logger.info('2: Extracted URLs')
+		urls = extract_urls(html)
+
+		#--------
+		# logger.info('4: create sitemap entry' )
+		sitemap_id 		= database.record_siteloop((domain_id, time.ctime(date_time), len(urls)))
+
+		#--------
+		# logger.info('5: Start loop at {}s'.format(round(time.time() - date_time, 2)))
+		loop_urls( urls, sitemap_id )
+
+		#--------	
+		# logger.info('6: Record data items' )
+		record_data( data_array )
+
+		#--------	
+		# logger.info('7: Update sitemap entry' )
+		update_siteloop_entry(sitemap_id, date_time)
+
+		#--------
+		# logger.info('8: Send report if errors')
+		if len(page_errors) > 0:
+			notifications.email_send('errors', page_errors)
 	
 	# logger.info('Total time taken: {}s'.format(round(time.time() - date_time, 2)))
+
+	
 
 #----------------------------------------------------------------------
 if __name__ == "__main__":
