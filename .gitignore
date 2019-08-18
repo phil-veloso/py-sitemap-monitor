@@ -1,13 +1,16 @@
 # config
 config.py
 
-# Logging 
+# logging 
 *.log
 
-# Database
+# database
 *.db
 
-# Virtual enviro
+# text editor
+.vscode
+
+# virtual enviro
 __pycache__
 /bin/
 /include/
