@@ -3,17 +3,19 @@ import requests 	# Used to retrieve sitemail
 import queue 		# Used to queue/limit no. of threads
 import threading 	# Used for multiprocessing of urls
 import time 		# Used for perforance reporting
-import logging 		# Used to record errors
 import statistics 	# importing the statistics module 
 
+import logging 		# Used to record errors
 from logging.handlers import RotatingFileHandler # Used for log rotation
+
+import pdb			# add breakpoints - pdb.set_trace() 
 
 #----------------------------------------------------------------------
 
 import config 			# CUSTOM - APPLICATION Configuration
-import database 		# CUSTOM - APPLICATION Configuration
-import notifications	
-import helpers
+import database 		# CUSTOM - database related scripts
+import notifications	# CUSTOM - email functioanlity related scripts
+import helpers			# CUSTOM - helper functions
 
 #----------------------------------------------------------------------
 
@@ -56,29 +58,74 @@ def logger_init():
 	logging.getLogger("queue").setLevel(logging.WARNING)
 	logging.getLogger("threading").setLevel(logging.WARNING) 
 
+
 #----------------------------------------------------------------------
-def sitemap_content(sitemap_url):
+def inspect_sitemap(url):
+	"""
+	Inspect sitemap for Urls
+	"""
+	sitemap 		= fetch_url(url)
+
+	urls 			= []
+	reg_sitemap 	= '(?<=\<sitemap\>)(.*?)(?=\<\/sitemap\>)'
+	reg_url			= '(?<=\<url\>)(.*?)(?=\<\/url\>)'
+
+	try:
+		html 			= str(sitemap)
+
+		site_submaps 	= re.findall(reg_sitemap, html)
+		site_links 		= re.findall(reg_url, html)
+
+		# extract urls found in sitemap
+		if len(site_links) > 0:
+			for i in site_links:
+				url = extract_links(i)
+				urls.append(url[0])
+
+		# query submaps and extract urls
+		if len(site_submaps) > 0 :
+			for i in site_submaps:
+				submap_link 	= extract_links(i)
+				submap_page		= fetch_url(submap_link[0])
+				submap_html		= str(submap_page)
+				page_urls 			= extract_links( submap_html )
+				if len( page_urls ) > 0:			
+					for i in page_urls:
+						urls.append(i)
+
+		return urls
+
+	except Exception as e:
+		logger.error( 'Failed : inspect_sitemap - {0}'.format(e) )   
+
+
+#----------------------------------------------------------------------
+def fetch_url(url):
 	"""
 	Fetch sitemap
 	"""
 	try:
-		r = requests.get( config.SITEMAP, headers=config.HEADERS ) 
+		r = requests.get( url, headers=config.HEADERS ) 
 		return r.content
 	except Exception as e:
-		logger.error( 'Failed : fetch_sitemap - {0}'.format(e) )
+		logger.error( 'Failed : fetch_url - {0}'.format(e) )
 
 
 #----------------------------------------------------------------------
-def extract_urls(html):
+def extract_links(html):
 	"""
-	Extract urls from sitemap html
+	Extract urls
 	"""
-	regex = '(?<=\<loc\>)(.*?)(?=\<\/loc\>)'
+	regex_link 		= '(?<=\<loc\>)(.*?)(?=\<\/loc\>)'
 	try:
 		page = str(html)
-		return re.findall(regex, page)
+		links = re.findall(regex_link, page)
+		if links is not None:
+			return links
+		else:
+			logger.error( 'Failed : extract_links - unable to extract urls ({0})'.format(e) )		
 	except Exception as e:
-		logger.error( 'Failed : extract_urls - {0}'.format(e) )   
+		logger.error( 'Failed : extract_links - {0}'.format(e) )   
 
 
 #----------------------------------------------------------------------
@@ -144,10 +191,10 @@ def check_url(q, sitemap_id):
 			
 			data_array.append( item )
 			
-			logger.info('Link: %s' % url)
-			logger.info('Status: %d' % r.status_code)
-			logger.info('Reason: %s' % r.reason)
-			logger.info('Speed: %f' % r.elapsed.total_seconds())
+			# logger.info('Link: %s' % url)
+			# logger.info('Status: %d' % r.status_code)
+			# logger.info('Reason: %s' % r.reason)
+			# logger.info('Speed: %f' % r.elapsed.total_seconds())
 
 			q.task_done()
 
@@ -198,6 +245,9 @@ def record_data( data_array ):
 
 #----------------------------------------------------------------------
 def update_siteloop_entry(sitemap_id, date_time):
+	"""
+	Update siteloop entry with stats
+	"""
 	slowest 		= float( "{0:.2f}".format( max(load_times) ) )
 	average 		= float( "{0:.2f}".format( statistics.mean( load_times ) ) )
 	fastest 		= float( "{0:.2f}".format( min(load_times ) ) )
@@ -239,38 +289,34 @@ def main():
 		sitemap_url	= i[1]	
 
 		#--------
-		# logger.info('1: Fetched sitemap')
-		html = sitemap_content(sitemap_url)
-
-		#--------
 		# logger.info('2: Extracted URLs')
-		urls = extract_urls(html)
+		urls = inspect_sitemap(sitemap_url)
 
-		#--------
-		# logger.info('4: create sitemap entry' )
-		sitemap_id 		= database.record_siteloop((domain_id, time.ctime(date_time), len(urls)))
+		if urls is not None:
+			#--------
+			# logger.info('4: create sitemap entry' )
+			sitemap_id 		= database.record_siteloop((domain_id, time.ctime(date_time), len(urls)))
 
-		#--------
-		# logger.info('5: Start loop at {}s'.format(round(time.time() - date_time, 2)))
-		loop_urls( urls, sitemap_id )
+			#--------
+			# logger.info('5: Start loop at {}s'.format(round(time.time() - date_time, 2)))
+			loop_urls( urls, sitemap_id )
 
-		#--------	
-		# logger.info('6: Record data items' )
-		record_data( data_array )
+			#--------	
+			# logger.info('6: Record data items' )
+			record_data( data_array )
 
-		#--------	
-		# logger.info('7: Update sitemap entry' )
-		update_siteloop_entry(sitemap_id, date_time)
+			#--------	
+			# logger.info('7: Update sitemap entry' )
+			update_siteloop_entry(sitemap_id, date_time)
 
-		#--------
-		# logger.info('8: Send report if errors')
-		if len(page_errors) > 0:
-			notifications.email_send('errors', page_errors)
+			#--------
+			# logger.info('8: Send report if errors')
+			if len(page_errors) > 0:
+				notifications.email_send('errors', page_errors)
 	
 	# logger.info('Total time taken: {}s'.format(round(time.time() - date_time, 2)))
 
 	
-
 #----------------------------------------------------------------------
 if __name__ == "__main__":
 	main()
