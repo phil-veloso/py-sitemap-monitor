@@ -1,253 +1,199 @@
 import sqlite3		# Used to store data
 import logging 		# Used to record errors
 
-import pandas as pd
+#----------------------------------------------------------------------
 
-from logging.handlers import RotatingFileHandler # Used for log rotation
+from . import config		# app configuration
+
+#----------------------------------------------------------------------
 
 logger 				= logging.getLogger('monitor')
 
 #----------------------------------------------------------------------
 
-import config
-
-#----------------------------------------------------------------------
-
-domain_table_name 		= 'domains'
-siteloop_table_name 	= 'siteloops'
-url_table_name 			= 'urls'
-
-#----------------------------------------------------------------------
-def create_connection(db_file):
-	""" 
-	create a database connection to the SQLite database
+class Database: 
 	"""
-	try:
-		conn = sqlite3.connect(db_file)
-		return conn
-	except Exception as e:
-		logger.error( 'Failed : create_connection - {0}'.format(e) )
-
-	return None
-
-
-#----------------------------------------------------------------------
-def create_table(conn, create_table_sql):
-	""" 
-	create a table
+	Database functions
 	"""
-	try:
-		c = conn.cursor()
-		c.execute(create_table_sql)
-	except Exception as e:
-		logger.error( 'Failed : create_table - {0}'.format(e) )
+
+	domain_table_name 		= 'domains'
+	siteloop_table_name 	= 'siteloops'
+	url_table_name 			= 'urls'
 
 
-#----------------------------------------------------------------------
-def setup_database():
-	""" 
-	Initialise databases - domain, siteloop, urls
-	"""		
-	create_domain_table = 	'''CREATE TABLE IF NOT EXISTS {name} (
-									id integer PRIMARY KEY,
-									sitemap_url text NOT NULL,
-									admin_email text
-								);'''.format(name=domain_table_name )
+	def __init__(self):
+		#----------------------------------------------------------------------
+		# Open connection and initiate cursor
+		#----------------------------------------------------------------------			
+		self.conn = self.open()
+		self.cur = self.conn.cursor()
 
-	create_siteloop_table = 	'''CREATE TABLE IF NOT EXISTS {name} (
-									id integer PRIMARY KEY,
-									domain_id text NOT NULL,
-									date_time integer NOT NULL,
-									total_urls integer NOT NULL,
-									successes integer,
-									redirects integer,
-									client_errors integer,
-									server_errors integer,
-									slowest real,
-									average real,
-									fastest real,
-									total_time real,
-									FOREIGN KEY (domain_id) REFERENCES {table} (id)
-								);'''.format(name=siteloop_table_name, table=domain_table_name )
- 
-	create_url_table = 	'''CREATE TABLE IF NOT EXISTS {name} (
-								id integer PRIMARY KEY,
-								siteloop_id integer,
-								page_url text NOT NULL,
-								status_code integer NOT NULL,
-								load_time real NOT NULL,
-								comment text,
-								FOREIGN KEY (siteloop_id) REFERENCES {table} (id)
-							)'''.format(name=url_table_name, table=siteloop_table_name )
- 
-	conn = create_connection(config.DB_PATH)
-	if conn is not None:
 
-		# create domain table
-		try: 
-			create_table(conn, create_domain_table)
-		except Exception as e:
-			logger.error( 'Failed : create_domain_table - {0}'.format(e) )	
-
-		# create siteloop table
+	def open(self):
+		#----------------------------------------------------------------------
+		# Open database connection
+		# @return: initialised database connection
+		#----------------------------------------------------------------------		
 		try:
-			create_table(conn, create_siteloop_table)
+			self.conn = sqlite3.connect(config.DB_PATH)
+			return self.conn
 		except Exception as e:
-			logger.error( 'Failed : create_siteloop_table - {0}'.format(e) )	
+			logger.error( 'Failed : database open - {0}'.format(e) )
 
-		# create url table
+
+	def commit(self):
+		#----------------------------------------------------------------------
+		# Commit amendments to database
+		#----------------------------------------------------------------------		
 		try:
-			create_table(conn, create_url_table)
+			self.conn.commit()
+			return
 		except Exception as e:
-			logger.error( 'Failed : create_url_table - {0}'.format(e) )			
+			logger.error( 'Failed : database commit - {0}'.format(e) )
+			
 
-		conn.commit()
-		conn.close()
-	else:
-		logger.error( 'Failed : database_init - cannot create the database connection' )
+	def close(self):
+		#----------------------------------------------------------------------
+		# Close database connection
+		#----------------------------------------------------------------------		
+		try:
+			self.conn.close()
+			return
+		except Exception as e:
+			logger.error( 'Failed : database close - {0}'.format(e) )
 
 
-#----------------------------------------------------------------------
-def record_domain(values):
-	"""
-	create domain record
-	"""
-	conn = create_connection(config.DB_PATH)
-	if conn is not None:
+	def record_domain(self, values):
+		#----------------------------------------------------------------------	
+		# Create new database entry in domain table
+		# @param: values - domain values to be recorded in database
+		# TODO: sanitise values?
+		#----------------------------------------------------------------------	
 		try:	
+			
 			sql = ''' INSERT INTO {name} (
-						sitemap_url
-					)VALUES(?) '''.format(name=domain_table_name)
-			cur = conn.cursor()
-			cur.execute(sql, values)
-			# row_id = cur.lastrowid
-			conn.commit()
-			conn.close()
-			# return row_id
+					sitemap_url
+				)VALUES(?) '''.format(
+					name=self.domain_table_name )
+								
+			self.cur.execute(sql, values)
+			self.commit()
 		except Exception as e:
-			conn.close()
 			logger.error( 'Failed : record_domain - {0}'.format(e) )
-	else:
-		logger.error( 'Failed : record_domain - cannot create the database connection' )
 
 
-#----------------------------------------------------------------------
-def record_siteloop(values):
-	"""
-	create sitemap record
-	"""
-	conn = create_connection(config.DB_PATH)
-	if conn is not None:
+	def record_siteloop(self, values):
+		#----------------------------------------------------------------------
+		# Create new database entry in siteloop table
+		# @param: values - siteloop values to be recorded
+		# @return: last row id
+		# TODO: sanitise values?
+		#----------------------------------------------------------------------
 		try:	
+
 			sql = ''' INSERT INTO {name} (
-						domain_id,
-						date_time,
-						total_urls
-					)VALUES(?,?,?) '''.format(name=siteloop_table_name)
-			cur = conn.cursor()
-			cur.execute(sql, values)
-			row_id = cur.lastrowid
-			conn.commit()
-			conn.close()
-			return row_id
+					domain_id,
+					date_time,
+					total_urls
+				)VALUES(?,?,?) '''.format(
+					name=self.siteloop_table_name )
+
+			self.cur.execute(sql, values)
+			self.commit()
+			row_id = self.cur.lastrowid
+			return row_id			
 		except Exception as e:
-			conn.close()
 			logger.error( 'Failed : record_siteloop - {0}'.format(e) )
-	else:
-		logger.error( 'Failed : record_siteloop - cannot create the database connection' )
 
 
-#----------------------------------------------------------------------
-def record_url(values):
-	"""
-	create a new url record
-	"""
-	conn = create_connection(config.DB_PATH)
-	if conn is not None:
-		try:
+	def record_url(self, values):
+		#----------------------------------------------------------------------
+		# Create new database entry in url table
+		# @param: values - url values to be recorded
+		# TODO: sanitise values?
+		#----------------------------------------------------------------------
+		try:		
+
 			sql = ''' INSERT INTO {name} (
-							siteloop_id,
-							page_url,
-							status_code,
-							load_time,
-							comment
-							) VALUES(?,?,?,?,?) '''.format(name=url_table_name)
+					siteloop_id,
+					page_url,
+					status_code,
+					load_time,
+					comment
+				) VALUES(?,?,?,?,?) '''.format(
+					name=self.url_table_name )
 
-			cur = conn.cursor()
-			cur.execute(sql, values)
-			conn.commit()
-			conn.close()
+			self.cur.execute(sql, values)
+			self.commit()
 		except Exception as e:
-			conn.close()
 			logger.error( 'Failed : record_url - {0}'.format(e) )
-	else:
-		logger.error( 'Failed : record_url - cannot create the database connection' )
 
 
-#----------------------------------------------------------------------
-def update_siteloop(table_id, values):
-	"""
-	Update siteloop table 
-	"""
-	conn = create_connection(config.DB_PATH)
-	if conn is not None:
+	def update_siteloop(self, row_id, values):
+		#----------------------------------------------------------------------
+		# Update existing database entry in siteloop table
+		# @param: siteloop_id - row id to be updated
+		# @param: values - siteloop values to be recorded
+		# TODO: sanitise values?
+		#----------------------------------------------------------------------
 		try:
+
 			sql = ''' UPDATE {name} SET 
-						successes = ?,
-						redirects = ?,
-						client_errors = ?,
-						server_errors = ?,
-						slowest  = ?,
-						average  = ?,
-						fastest  = ?,
-						total_time  = ?
-						WHERE id = {id} '''.format(name=siteloop_table_name, id=table_id)
-			cur = conn.cursor()
-			cur.execute(sql, values)
-			conn.commit()
-			conn.close()
+					successes = ?,
+					redirects = ?,
+					client_errors = ?,
+					server_errors = ?,
+					slowest  = ?,
+					average  = ?,
+					fastest  = ?,
+					total_time  = ?
+				WHERE id = {id} '''.format(
+					name=self.siteloop_table_name, 
+					id=row_id )
+
+			self.cur.execute(sql, values)
+			self.commit()
 		except Exception as e:
 			logger.error( 'Failed : update_siteloop - {0}'.format(e) )
-	else:
-		logger.error( 'Failed : update_siteloop - cannot create the database connection' )
 
 
-#----------------------------------------------------------------------
-def query_domains():
-	"""
-	Check whether domains exists in domain_table_name
-	"""
-	conn = create_connection(config.DB_PATH)
-	if conn is not None:
+	def check_domains_exist(self):
+		#----------------------------------------------------------------------		
+		# Retrieve row count from domain table
+		# @return: last row id
+		#----------------------------------------------------------------------
 		try:
-			sql = '''SELECT id FROM {name};'''.format( name=domain_table_name )
-			cur = conn.cursor()
-			cur.execute(sql)
-			row_count = cur.fetchone()
-			conn.close()
+
+			sql = '''SELECT id FROM {name};'''.format( 
+				name=self.domain_table_name )
+
+			self.cur.execute(sql)
+			row_count = self.cur.fetchone()
 			return row_count
 		except Exception as e:
 			logger.error( 'Failed : query_domains - {0}'.format(e) )
-	else:
-		logger.error( 'Failed : query_domains - cannot create the database connection' )
 
 
-#----------------------------------------------------------------------
-def fetch_sitemaps():
-	"""
-	fetch_sitemaps
-	"""
-	conn = create_connection(config.DB_PATH)
-	if conn is not None:
+	def fetch_sitemaps(self):
+		#----------------------------------------------------------------------
+		# Retrieve all entries from domains table
+		# @return: list of domain ids' and sitemap urls 
+		#----------------------------------------------------------------------
 		try:
-			sql = '''SELECT id, sitemap_url FROM {name};'''.format( name=domain_table_name )
-			cur = conn.cursor()
-			cur.execute(sql)			
-			ids_and_urls = cur.fetchall()
-			conn.close()
+
+			sql = '''SELECT id, sitemap_url FROM {name};'''.format( 
+				name=self.domain_table_name )
+
+			self.cur.execute(sql)			
+			ids_and_urls = self.cur.fetchall()
 			return ids_and_urls
 		except Exception as e:
 			logger.error( 'Failed : fetch_sitemaps - {0}'.format(e) )
-	else:
-		logger.error( 'Failed : fetch_sitemaps - cannot create the database connection' )
-	
+
+
+# End Database Class
+#----------------------------------------------------------------------
+
+
+
+
