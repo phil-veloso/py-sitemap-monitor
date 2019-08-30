@@ -8,8 +8,6 @@ $ python3 monitor.py
 
 TODO:
 
-- Improve email notifications on script error: email_send('Script Error', e)
-
 - https://github.com/plotly/dash-table
 
 
