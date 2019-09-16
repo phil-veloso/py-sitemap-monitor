@@ -1,22 +1,22 @@
-import sqlite3		# Used to store data
-import logging 		# Used to record errors
-from logging.handlers import RotatingFileHandler # Used for log rotation
+# Standard library imports
+import logging 		
+from logging.handlers import RotatingFileHandler
 
-#----------------------------------------------------------------------	
+# Third party imports
+import sqlite3
 
-from . import config 					# app configuration
-from . import helpers as Helper		# helper functions
-from . import database as Database	# database functions
-
-#----------------------------------------------------------------------	
-
-logger 	= logging.getLogger('monitor')
+# Local application imports
+from . import config, helpers, database as dmb
 
 #----------------------------------------------------------------------
 
-class Logger:
-	
+class SetupLogger:
+	"""
+	Create log file and setup log rotation and 
+	"""
+
 	def __init__(self):
+		self.log = logging.getLogger('monitor')
 		self.logger_init()
 
 
@@ -26,9 +26,10 @@ class Logger:
 		#----------------------------------------------------------------------
 
 		level = logging.WARNING
-		
+
 		# Check if log exists else create
-		Helper.check_files_exists( config.LOG_PATH )
+		helper = helpers.Helper()
+		helper.check_files_exists( config.LOG_PATH )
 
 		# setup log rotation
 		handler = RotatingFileHandler(
@@ -39,22 +40,25 @@ class Logger:
 		formatter = logging.Formatter('%(asctime)-12s [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')  
 		handler.setFormatter(formatter)
 
-		logger.setLevel(level)
-		logger.addHandler(handler)	
+		self.log.setLevel(level)
+		self.log.addHandler(handler)	
 
 
 # End Logger Class
 #----------------------------------------------------------------------
 
-class CreateDatabase:
+class SetupDatabase:
 	"""
 	Setup tables for recording domain sitemaps, sitemap loops and urls
 	"""
 
 	def __init__(self):
+		self.log = logging.getLogger('monitor')
 
-		# Initiate & connec to database 
-		database =	Database()
+		# Initiate database
+		database =	dmb.Database()
+
+		# Connect to database 
 		self.conn = database.open()
 		self.cur = self.conn.cursor()
 
@@ -75,14 +79,13 @@ class CreateDatabase:
 
 			sql = '''CREATE TABLE IF NOT EXISTS {name} (
 					id integer PRIMARY KEY,
-					sitemap_url text NOT NULL,
-					admin_email text
+					sitemap_url text NOT NULL
 				);'''.format(
-					name=Database.domain_table_name )
+					name=dmb.Database().domain_table_name )
 
 			self.cur.execute(sql)
 		except Exception as e:
-			logger.error( 'Failed : create_domain_table - {0}'.format(e) )	
+			self.log.error( 'Failed : create_domain_table - {0}'.format(e) )	
 
 
 	def create_siteloop_table(self):
@@ -93,7 +96,7 @@ class CreateDatabase:
 
 			sql = '''CREATE TABLE IF NOT EXISTS {name} (
 					id integer PRIMARY KEY,
-					domain_id text NOT NULL,
+					domain_id integer NOT NULL,
 					date_time integer NOT NULL,
 					total_urls integer NOT NULL,
 					successes integer,
@@ -106,12 +109,12 @@ class CreateDatabase:
 					total_time real,
 					FOREIGN KEY (domain_id) REFERENCES {table} (id)
 				);'''.format(
-					name=Database.siteloop_table_name, 
-					table=Database.domain_table_name )
+					name=dmb.Database().siteloop_table_name, 
+					table=dmb.Database().domain_table_name )
 
 			self.cur.execute(sql)
 		except Exception as e:
-			logger.error( 'Failed : create_siteloop_table - {0}'.format(e) )	
+			self.log.error( 'Failed : create_siteloop_table - {0}'.format(e) )	
 
 
 	def create_url_table(self):
@@ -122,19 +125,19 @@ class CreateDatabase:
 
 			sql = '''CREATE TABLE IF NOT EXISTS {name} (
 					id integer PRIMARY KEY,
-					siteloop_id integer,
+					siteloop_id integer NOT NULL,
 					page_url text NOT NULL,
 					status_code integer NOT NULL,
 					load_time real NOT NULL,
 					comment text,
 					FOREIGN KEY (siteloop_id) REFERENCES {table} (id)
 				)'''.format(
-					name=Database.url_table_name, 
-					table=Database.siteloop_table_name )
+					name=dmb.Database().url_table_name, 
+					table=dmb.Database().siteloop_table_name )
 								
 			self.cur.execute(sql)
 		except Exception as e:
-			logger.error( 'Failed : create_url_table - {0}'.format(e) )			
+			self.log.error( 'Failed : create_url_table - {0}'.format(e) )			
 
 
 # End CreateDatabase Class
