@@ -1,33 +1,28 @@
-import sqlite3		# Used to store data
-import logging 		# Used to record errors
+"""
+Database functions
+"""
 
-#----------------------------------------------------------------------
+# Standard library imports
+import logging
 
-from . import config		# app configuration
+# Third party imports
+import sqlite3
 
-#----------------------------------------------------------------------
-
-logger 				= logging.getLogger('monitor')
+# Local application imports
+from . import config
 
 #----------------------------------------------------------------------
 
 class Database: 
-	"""
-	Database functions
-	"""
 
 	domain_table_name 		= 'domains'
 	siteloop_table_name 	= 'siteloops'
 	url_table_name 			= 'urls'
 
-
 	def __init__(self):
-		#----------------------------------------------------------------------
-		# Open connection and initiate cursor
-		#----------------------------------------------------------------------			
-		self.conn = self.open()
-		self.cur = self.conn.cursor()
-
+		self.log 	= logging.getLogger('monitor')	
+		self.conn 	= self.open()
+		self.cur 	= self.conn.cursor()
 
 	def open(self):
 		#----------------------------------------------------------------------
@@ -38,7 +33,7 @@ class Database:
 			self.conn = sqlite3.connect(config.DB_PATH)
 			return self.conn
 		except Exception as e:
-			logger.error( 'Failed : database open - {0}'.format(e) )
+			self.log.error( 'Failed : database open - {0}'.format(e) )
 
 
 	def commit(self):
@@ -49,7 +44,7 @@ class Database:
 			self.conn.commit()
 			return
 		except Exception as e:
-			logger.error( 'Failed : database commit - {0}'.format(e) )
+			self.log.error( 'Failed : database commit - {0}'.format(e) )
 			
 
 	def close(self):
@@ -60,7 +55,7 @@ class Database:
 			self.conn.close()
 			return
 		except Exception as e:
-			logger.error( 'Failed : database close - {0}'.format(e) )
+			self.log.error( 'Failed : database close - {0}'.format(e) )
 
 
 	def record_domain(self, values):
@@ -79,7 +74,7 @@ class Database:
 			self.cur.execute(sql, values)
 			self.commit()
 		except Exception as e:
-			logger.error( 'Failed : record_domain - {0}'.format(e) )
+			self.log.error( 'Failed : record_domain - {0}'.format(e) )
 
 
 	def record_siteloop(self, values):
@@ -94,8 +89,16 @@ class Database:
 			sql = ''' INSERT INTO {name} (
 					domain_id,
 					date_time,
-					total_urls
-				)VALUES(?,?,?) '''.format(
+					total_urls,
+					successes,
+					redirects,
+					client_errors,
+					server_errors,
+					slowest,
+					average,
+					fastest,
+					total_time					
+				)VALUES(?,?,?,?,?,?,?,?,?,?,?) '''.format(
 					name=self.siteloop_table_name )
 
 			self.cur.execute(sql, values)
@@ -103,7 +106,7 @@ class Database:
 			row_id = self.cur.lastrowid
 			return row_id			
 		except Exception as e:
-			logger.error( 'Failed : record_siteloop - {0}'.format(e) )
+			self.log.error( 'Failed : record_siteloop - {0}'.format(e) )
 
 
 	def record_url(self, values):
@@ -126,7 +129,7 @@ class Database:
 			self.cur.execute(sql, values)
 			self.commit()
 		except Exception as e:
-			logger.error( 'Failed : record_url - {0}'.format(e) )
+			self.log.error( 'Failed : record_url - {0}'.format(e) )
 
 
 	def update_siteloop(self, row_id, values):
@@ -154,7 +157,7 @@ class Database:
 			self.cur.execute(sql, values)
 			self.commit()
 		except Exception as e:
-			logger.error( 'Failed : update_siteloop - {0}'.format(e) )
+			self.log.error( 'Failed : update_siteloop - {0}'.format(e) )
 
 
 	def check_domains_exist(self):
@@ -171,7 +174,7 @@ class Database:
 			row_count = self.cur.fetchone()
 			return row_count
 		except Exception as e:
-			logger.error( 'Failed : query_domains - {0}'.format(e) )
+			self.log.error( 'Failed : query_domains - {0}'.format(e) )
 
 
 	def fetch_sitemaps(self):
@@ -188,7 +191,7 @@ class Database:
 			ids_and_urls = self.cur.fetchall()
 			return ids_and_urls
 		except Exception as e:
-			logger.error( 'Failed : fetch_sitemaps - {0}'.format(e) )
+			self.log.error( 'Failed : fetch_sitemaps - {0}'.format(e) )
 
 
 # End Database Class
