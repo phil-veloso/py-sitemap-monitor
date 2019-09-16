@@ -1,13 +1,9 @@
-import requests 	# Used to retrieve sitemail + send mail
-import logging 		# Used to record errors
+# Standard library imports
+import requests
+import logging
 
-#----------------------------------------------------------------------
-
-from config import config		# app configuration
-
-#----------------------------------------------------------------------
-
-logger 				= logging.getLogger('monitor')
+# Local application imports
+from . import config
 
 #----------------------------------------------------------------------	
 
@@ -16,7 +12,10 @@ class Notifications:
 	Notifications functions 
 	"""
 
-	def send(subject, body):
+	def __init__(self):
+		self.log = logging.getLogger('monitor')
+
+	def send(self, subject, body):
 		#----------------------------------------------------------------------		
 		# Retrieve row count from domain table
 		# @return: last row id
@@ -33,7 +32,7 @@ class Notifications:
 					}
 				)
 		except Exception as e:
-			logger.error( 'Failed : email_send - {0}'.format(e) )
+			self.log.error( 'Failed : email_send - {0}'.format(e) )
 
 
 # End Notifications Class

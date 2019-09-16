@@ -16,3 +16,6 @@ __pycache__
 /include/
 /lib/
 pyvenv.cfg
+
+# project
+*.egg-info
